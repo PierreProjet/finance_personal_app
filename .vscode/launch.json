@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Finance Foyer",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "finance_app.main",
+      "console": "integratedTerminal",
+      "env": {"PYTHONPATH": "${workspaceFolder}/src"}
+    }
+  ]
+}

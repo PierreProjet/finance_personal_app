@@ -1,0 +1,19 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Tests",
+      "type": "shell",
+      "command": ".\\.venv\\Scripts\\pytest.exe",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Build finance.exe",
+      "type": "shell",
+      "command": "powershell -ExecutionPolicy Bypass -File .\\scripts\\build_exe.ps1",
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}
