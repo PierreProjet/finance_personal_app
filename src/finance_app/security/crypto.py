@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import os
+from contextlib import suppress
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -10,7 +11,6 @@ try:
     import keyring
 except ImportError:  # pragma: no cover - dependency is declared, fallback is defensive.
     keyring = None  # type: ignore[assignment]
-
 
 SERVICE_NAME = "FinanceFoyer"
 KEY_ACCOUNT = "local-master-key"
@@ -44,10 +44,8 @@ class CryptoService:
             return key_path.read_bytes().strip()
         generated = Fernet.generate_key()
         key_path.write_bytes(generated)
-        try:
+        with suppress(OSError):
             os.chmod(key_path, 0o600)
-        except OSError:
-            pass
         return generated
 
     def encrypt(self, value: str) -> str:

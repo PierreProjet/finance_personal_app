@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
 from math import pow
-from typing import Iterable
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,7 +20,9 @@ class ForecastPoint:
     value: Decimal
 
 
-def net_worth(assets: Iterable[Decimal], liabilities: Iterable[Decimal]) -> tuple[Decimal, Decimal, Decimal]:
+def net_worth(
+    assets: Iterable[Decimal], liabilities: Iterable[Decimal]
+) -> tuple[Decimal, Decimal, Decimal]:
     gross = sum(assets, Decimal("0"))
     debt = sum(liabilities, Decimal("0"))
     return gross, debt, gross - debt
@@ -43,10 +45,12 @@ def concentration_hhi(items: Iterable[Decimal]) -> Decimal:
 
 def weighted_expected_return(items: Iterable[AllocationItem]) -> Decimal:
     positions = list(items)
-    total = sum((p.value for p in positions), Decimal("0"))
+    total = sum((position.value for position in positions), Decimal("0"))
     if total <= 0:
         return Decimal("0")
-    return sum((p.value / total) * p.expected_return for p in positions)
+    return sum(
+        (position.value / total) * position.expected_return for position in positions
+    )
 
 
 def project_compound(

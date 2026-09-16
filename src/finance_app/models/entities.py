@@ -46,7 +46,7 @@ class User(Base):
     accent_color: Mapped[str] = mapped_column(String(20), default="#6C63FF")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    memberships: Mapped[list["HouseholdMember"]] = relationship(back_populates="user")
+    memberships: Mapped[list[HouseholdMember]] = relationship(back_populates="user")
 
 
 class Household(Base):
@@ -56,7 +56,7 @@ class Household(Base):
     name: Mapped[str] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    members: Mapped[list["HouseholdMember"]] = relationship(back_populates="household")
+    members: Mapped[list[HouseholdMember]] = relationship(back_populates="household")
 
 
 class HouseholdMember(Base):
@@ -64,7 +64,9 @@ class HouseholdMember(Base):
     __table_args__ = (UniqueConstraint("household_id", "user_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    household_id: Mapped[int] = mapped_column(ForeignKey("households.id", ondelete="CASCADE"))
+    household_id: Mapped[int] = mapped_column(
+        ForeignKey("households.id", ondelete="CASCADE")
+    )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     role: Mapped[str] = mapped_column(String(30), default=HouseholdRole.MEMBER.value)
     can_view_household: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -77,12 +79,18 @@ class FinancialAccount(Base):
     __tablename__ = "financial_accounts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    owner_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    household_id: Mapped[int | None] = mapped_column(ForeignKey("households.id"), nullable=True)
+    owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    household_id: Mapped[int | None] = mapped_column(
+        ForeignKey("households.id"), nullable=True
+    )
     name_encrypted: Mapped[str] = mapped_column(String(500))
     kind: Mapped[str] = mapped_column(String(40))
     institution_encrypted: Mapped[str] = mapped_column(String(500), default="")
-    current_balance: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
+    current_balance: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), default=Decimal("0")
+    )
     is_liability: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -91,13 +99,17 @@ class AssetPosition(Base):
     __tablename__ = "asset_positions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    account_id: Mapped[int] = mapped_column(ForeignKey("financial_accounts.id", ondelete="CASCADE"))
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("financial_accounts.id", ondelete="CASCADE")
+    )
     label_encrypted: Mapped[str] = mapped_column(String(500))
     asset_kind: Mapped[str] = mapped_column(String(40))
     value: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     sector: Mapped[str] = mapped_column(String(100), default="Non renseigné")
     geography: Mapped[str] = mapped_column(String(100), default="Non renseigné")
-    expected_annual_return: Mapped[Decimal] = mapped_column(Numeric(7, 4), default=Decimal("0.04"))
+    expected_annual_return: Mapped[Decimal] = mapped_column(
+        Numeric(7, 4), default=Decimal("0.04")
+    )
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -105,7 +117,9 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    account_id: Mapped[int] = mapped_column(ForeignKey("financial_accounts.id", ondelete="CASCADE"))
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("financial_accounts.id", ondelete="CASCADE")
+    )
     booked_on: Mapped[date] = mapped_column(Date, default=date.today)
     category: Mapped[str] = mapped_column(String(100), index=True)
     label_encrypted: Mapped[str] = mapped_column(String(500))
@@ -118,7 +132,9 @@ class MonthlyBudget(Base):
     __table_args__ = (UniqueConstraint("household_id", "month", "category"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    household_id: Mapped[int] = mapped_column(ForeignKey("households.id", ondelete="CASCADE"))
+    household_id: Mapped[int] = mapped_column(
+        ForeignKey("households.id", ondelete="CASCADE")
+    )
     month: Mapped[date] = mapped_column(Date)
     category: Mapped[str] = mapped_column(String(100))
     planned_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
@@ -128,7 +144,9 @@ class NetWorthSnapshot(Base):
     __tablename__ = "net_worth_snapshots"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    household_id: Mapped[int] = mapped_column(ForeignKey("households.id", ondelete="CASCADE"))
+    household_id: Mapped[int] = mapped_column(
+        ForeignKey("households.id", ondelete="CASCADE")
+    )
     captured_on: Mapped[date] = mapped_column(Date, default=date.today)
     gross_assets: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     liabilities: Mapped[Decimal] = mapped_column(Numeric(18, 2))

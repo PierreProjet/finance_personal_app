@@ -71,14 +71,18 @@ class FinanceService:
     def list_accounts(self, user_id: int) -> list[dict[str, object]]:
         household_id, _, _, can_view = self.household_for_user(user_id)
         with self._database.session() as session:
-            conditions = [FinancialAccount.owner_user_id == user_id]
-            if can_view:
-                conditions.append(FinancialAccount.household_id == household_id)
-            accounts = session.scalars(select(FinancialAccount).where(*([] if False else [conditions[0]]))).all()
-            # SQLite-friendly explicit merge avoids complex OR composition and keeps permissions obvious.
+            accounts = list(
+                session.scalars(
+                    select(FinancialAccount).where(
+                        FinancialAccount.owner_user_id == user_id
+                    )
+                ).all()
+            )
             if can_view:
                 shared = session.scalars(
-                    select(FinancialAccount).where(FinancialAccount.household_id == household_id)
+                    select(FinancialAccount).where(
+                        FinancialAccount.household_id == household_id
+                    )
                 ).all()
                 by_id = {account.id: account for account in [*accounts, *shared]}
                 accounts = list(by_id.values())
@@ -146,8 +150,14 @@ class FinanceService:
     def dashboard(self, user_id: int) -> dict[str, object]:
         household_id, _, _, can_view = self.household_for_user(user_id)
         account_rows = self.list_accounts(user_id)
-        gross = sum((row["balance"] for row in account_rows if not row["liability"]), Decimal("0"))
-        liabilities = sum((abs(row["balance"]) for row in account_rows if row["liability"]), Decimal("0"))
+        gross = sum(
+            (row["balance"] for row in account_rows if not row["liability"]),
+            Decimal("0"),
+        )
+        liabilities = sum(
+            (abs(row["balance"]) for row in account_rows if row["liability"]),
+            Decimal("0"),
+        )
         net = gross - liabilities
 
         account_ids = [int(row["id"]) for row in account_rows]
@@ -165,36 +175,57 @@ class FinanceService:
                 ).all()
 
             expense_categories: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-            for tx in transactions:
-                amount = Decimal(tx.amount)
+            for transaction in transactions:
+                amount = Decimal(transaction.amount)
                 if amount < 0:
-                    expense_categories[tx.category] += abs(amount)
+                    expense_categories[transaction.category] += abs(amount)
 
-            asset_values = [Decimal(a.value) for a in assets]
-            by_type = allocation_by((a.asset_kind, Decimal(a.value)) for a in assets)
-            by_sector = allocation_by((a.sector, Decimal(a.value)) for a in assets)
-            by_geography = allocation_by((a.geography, Decimal(a.value)) for a in assets)
+            asset_values = [Decimal(asset.value) for asset in assets]
+            by_type = allocation_by(
+                (asset.asset_kind, Decimal(asset.value)) for asset in assets
+            )
+            by_sector = allocation_by(
+                (asset.sector, Decimal(asset.value)) for asset in assets
+            )
+            by_geography = allocation_by(
+                (asset.geography, Decimal(asset.value)) for asset in assets
+            )
             expected = weighted_expected_return(
-                AllocationItem(a.asset_kind, Decimal(a.value), Decimal(a.expected_annual_return))
-                for a in assets
+                AllocationItem(
+                    asset.asset_kind,
+                    Decimal(asset.value),
+                    Decimal(asset.expected_annual_return),
+                )
+                for asset in assets
             )
             forecast = project_compound(max(net, Decimal("0")), expected, years=10)
 
             first_of_month = date.today().replace(day=1)
-            budgets = session.scalars(
-                select(MonthlyBudget).where(
-                    MonthlyBudget.household_id == household_id,
-                    MonthlyBudget.month == first_of_month,
-                )
-            ).all() if can_view else []
+            if can_view:
+                budgets = session.scalars(
+                    select(MonthlyBudget).where(
+                        MonthlyBudget.household_id == household_id,
+                        MonthlyBudget.month == first_of_month,
+                    )
+                ).all()
+            else:
+                budgets = []
 
-        planned = sum((Decimal(b.planned_amount) for b in budgets), Decimal("0"))
+        planned = sum(
+            (Decimal(budget.planned_amount) for budget in budgets), Decimal("0")
+        )
         spent = sum(expense_categories.values(), Decimal("0"))
         return {
             "gross": gross,
             "liabilities": liabilities,
             "net": net,
-            "expenses": dict(sorted(expense_categories.items(), key=lambda x: x[1], reverse=True)),
+            "expenses": dict(
+                sorted(
+                    expense_categories.items(),
+                    key=lambda item: item[1],
+                    reverse=True,
+                )
+            ),
             "allocation_type": by_type,
             "allocation_sector": by_sector,
             "allocation_geography": by_geography,
