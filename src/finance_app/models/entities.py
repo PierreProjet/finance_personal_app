@@ -9,7 +9,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
-    pass
+    """Base SQLAlchemy model used by the application."""
 
 
 class HouseholdRole(StrEnum):
@@ -85,6 +85,18 @@ class FinancialAccount(Base):
     current_balance: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
     is_liability: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AccountNote(Base):
+    """Encrypted free-form note attached to one financial account."""
+
+    __tablename__ = "account_notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("financial_accounts.id", ondelete="CASCADE"), index=True)
+    note_encrypted: Mapped[str] = mapped_column(String(4000))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class AssetPosition(Base):
