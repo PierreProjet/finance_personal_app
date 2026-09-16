@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 DEFAULT_PREFERENCES = {
     "theme": "dark",
     "accent_color": "#6C63FF",
@@ -36,5 +35,11 @@ class PreferencesStore:
 
     def save(self, user_id: int, preferences: dict[str, object]) -> None:
         path = self._directory / f"user_{user_id}.json"
-        safe_values = {key: preferences.get(key, default) for key, default in DEFAULT_PREFERENCES.items()}
-        path.write_text(json.dumps(safe_values, indent=2, ensure_ascii=False), encoding="utf-8")
+        safe_values = {
+            key: preferences.get(key, default)
+            for key, default in DEFAULT_PREFERENCES.items()
+        }
+        path.write_text(
+            json.dumps(safe_values, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
