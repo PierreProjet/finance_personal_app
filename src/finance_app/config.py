@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
-import os
-
 
 APP_NAME = "FinanceFoyer"
 APP_VERSION = "0.1.0"
@@ -26,6 +25,6 @@ class Settings:
     database_path: Path
 
     @classmethod
-    def load(cls) -> "Settings":
+    def load(cls) -> Settings:
         data_dir = default_data_dir()
         return cls(data_dir=data_dir, database_path=data_dir / "finance.db")

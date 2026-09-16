@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -48,7 +46,9 @@ class LoginWindow(QWidget):
 
     def _build_login(self) -> QWidget:
         widget = QWidget()
-        layout = self._headline("Finance Foyer", "Une vue locale et sécurisée de votre patrimoine.")
+        layout = self._headline(
+            "Finance Foyer", "Une vue locale et sécurisée de votre patrimoine."
+        )
         self.login_username = QLineEdit()
         self.login_username.setPlaceholderText("nom d'utilisateur")
         self.login_password = QLineEdit()
@@ -72,14 +72,18 @@ class LoginWindow(QWidget):
 
     def _build_register(self) -> QWidget:
         widget = QWidget()
-        layout = self._headline("Créer votre espace", "Le premier utilisateur devient admin_foyer.")
+        layout = self._headline(
+            "Créer votre espace", "Le premier utilisateur devient admin_foyer."
+        )
         self.register_username = QLineEdit()
         self.register_display_name = QLineEdit()
         self.register_household = QLineEdit()
         self.register_password = QLineEdit()
         self.register_password.setEchoMode(QLineEdit.EchoMode.Password)
         self.register_color = QComboBox()
-        self.register_color.addItems(["#6C63FF", "#3A86FF", "#00A896", "#E76F51", "#D65DB1"])
+        self.register_color.addItems(
+            ["#6C63FF", "#3A86FF", "#00A896", "#E76F51", "#D65DB1"]
+        )
         form = QFormLayout()
         form.addRow("Utilisateur", self.register_username)
         form.addRow("Nom affiché", self.register_display_name)
@@ -99,7 +103,9 @@ class LoginWindow(QWidget):
         return widget
 
     def _login(self) -> None:
-        user = self._auth.authenticate(self.login_username.text(), self.login_password.text())
+        user = self._auth.authenticate(
+            self.login_username.text(), self.login_password.text()
+        )
         if not user:
             QMessageBox.warning(self, "Connexion", "Identifiants invalides.")
             return
@@ -117,5 +123,7 @@ class LoginWindow(QWidget):
         except ValueError as exc:
             QMessageBox.warning(self, "Création", str(exc))
             return
-        QMessageBox.information(self, "Création", "Profil créé. Vous êtes admin_foyer.")
+        QMessageBox.information(
+            self, "Création", "Profil créé. Vous êtes admin_foyer."
+        )
         self._on_authenticated(user)

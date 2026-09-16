@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from datetime import date
+from decimal import Decimal
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -13,8 +14,8 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
     QProgressBar,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -65,12 +66,18 @@ class DashboardWindow(QWidget):
         brand = QLabel("◈  Finance Foyer")
         brand.setStyleSheet("font-size:20px;font-weight:700;padding:10px 4px;")
         side.addWidget(brand)
-        for label in ["Vue d'ensemble", "Patrimoine", "Transactions", "Budget", "Diversification"]:
+        for label in [
+            "Vue d'ensemble",
+            "Patrimoine",
+            "Transactions",
+            "Budget",
+            "Diversification",
+        ]:
             button = QPushButton(label)
             button.clicked.connect(self.refresh)
             side.addWidget(button)
         side.addStretch()
-        household_id, household_name, role, _ = self._finance.household_for_user(self._user.id)
+        _, household_name, role, _ = self._finance.household_for_user(self._user.id)
         profile = QLabel(f"{self._user.display_name}\n{household_name} · {role}")
         profile.setObjectName("Muted")
         side.addWidget(profile)
@@ -84,6 +91,7 @@ class DashboardWindow(QWidget):
         title.setObjectName("Title")
         header.addWidget(title)
         header.addStretch()
+
         add_member = QPushButton("+ Membre")
         add_member.clicked.connect(self._show_add_member)
         add_budget = QPushButton("Budget")
@@ -114,16 +122,20 @@ class DashboardWindow(QWidget):
         content.addLayout(cards)
 
         lower = QGridLayout()
-        accounts_card = QFrame(); accounts_card.setObjectName("Card")
+        accounts_card = QFrame()
+        accounts_card.setObjectName("Card")
         accounts_layout = QVBoxLayout(accounts_card)
         accounts_layout.addWidget(QLabel("Comptes"))
         self.accounts = QTableWidget(0, 4)
-        self.accounts.setHorizontalHeaderLabels(["Compte", "Type", "Solde", "Portée"])
+        self.accounts.setHorizontalHeaderLabels(
+            ["Compte", "Type", "Solde", "Portée"]
+        )
         self.accounts.horizontalHeader().setStretchLastSection(True)
         accounts_layout.addWidget(self.accounts)
         lower.addWidget(accounts_card, 0, 0, 2, 2)
 
-        expenses_card = QFrame(); expenses_card.setObjectName("Card")
+        expenses_card = QFrame()
+        expenses_card.setObjectName("Card")
         expenses_layout = QVBoxLayout(expenses_card)
         expenses_layout.addWidget(QLabel("Principaux postes de dépenses"))
         self.expenses_label = QLabel("Aucune transaction")
@@ -132,7 +144,8 @@ class DashboardWindow(QWidget):
         expenses_layout.addWidget(self.expenses_label)
         lower.addWidget(expenses_card, 0, 2)
 
-        risk_card = QFrame(); risk_card.setObjectName("Card")
+        risk_card = QFrame()
+        risk_card.setObjectName("Card")
         risk_layout = QVBoxLayout(risk_card)
         risk_layout.addWidget(QLabel("Diversification / concentration"))
         self.risk_label = QLabel("—")
@@ -141,7 +154,8 @@ class DashboardWindow(QWidget):
         risk_layout.addWidget(self.risk_label)
         lower.addWidget(risk_card, 1, 2)
 
-        budget_card = QFrame(); budget_card.setObjectName("Card")
+        budget_card = QFrame()
+        budget_card.setObjectName("Card")
         budget_layout = QVBoxLayout(budget_card)
         budget_layout.addWidget(QLabel("Budget commun du mois"))
         self.budget_progress = QProgressBar()
@@ -152,7 +166,8 @@ class DashboardWindow(QWidget):
         budget_layout.addWidget(self.budget_label)
         lower.addWidget(budget_card, 2, 0)
 
-        forecast_card = QFrame(); forecast_card.setObjectName("Card")
+        forecast_card = QFrame()
+        forecast_card.setObjectName("Card")
         forecast_layout = QVBoxLayout(forecast_card)
         forecast_layout.addWidget(QLabel("Projection à 10 ans"))
         self.forecast_label = QLabel("—")
@@ -168,17 +183,30 @@ class DashboardWindow(QWidget):
         self.gross_card.value.setText(money(data["gross"]))
         self.debt_card.value.setText(money(data["liabilities"]))
         self.net_card.value.setText(money(data["net"]))
-        self.return_card.value.setText(f"{float(data['expected_return']) * 100:.2f} %")
+        expected_return = float(data["expected_return"])
+        self.return_card.value.setText(f"{expected_return * 100:.2f} %")
 
         accounts = data["accounts"]
         self.accounts.setRowCount(len(accounts))
         for row, account in enumerate(accounts):
-            values = [account["name"], account["kind"], money(account["balance"]), "Foyer" if account["shared"] else "Personnel"]
-            for col, value in enumerate(values):
-                self.accounts.setItem(row, col, QTableWidgetItem(str(value)))
+            values = [
+                account["name"],
+                account["kind"],
+                money(account["balance"]),
+                "Foyer" if account["shared"] else "Personnel",
+            ]
+            for column, value in enumerate(values):
+                self.accounts.setItem(row, column, QTableWidgetItem(str(value)))
 
         expenses = data["expenses"]
-        self.expenses_label.setText("\n".join(f"• {k}: {money(v)}" for k, v in list(expenses.items())[:5]) or "Aucune dépense enregistrée.")
+        expense_lines = [
+            f"• {category}: {money(amount)}"
+            for category, amount in list(expenses.items())[:5]
+        ]
+        self.expenses_label.setText(
+            "\n".join(expense_lines) or "Aucune dépense enregistrée."
+        )
+
         hhi = float(data["hhi"])
         level = "faible" if hhi < 0.15 else "modérée" if hhi < 0.25 else "élevée"
         by_type = data["allocation_type"]
@@ -188,109 +216,279 @@ class DashboardWindow(QWidget):
             total = sum(by_type.values(), Decimal("0"))
             share = float(top[1] / total * 100) if total else 0
             detail += f" Première classe: {top[0]} ({share:.0f} %)."
-        self.risk_label.setText(detail + " Indicateur informatif, pas un conseil d'investissement.")
+        detail += " Indicateur informatif, pas un conseil d'investissement."
+        self.risk_label.setText(detail)
 
         planned = data["budget_planned"]
         spent = data["budget_spent"]
         ratio = int(min(100, float(spent / planned * 100))) if planned else 0
         self.budget_progress.setValue(ratio)
         self.budget_label.setText(f"Dépensé {money(spent)} / prévu {money(planned)}")
+
         forecast = data["forecast"]
-        self.forecast_label.setText(f"Scénario central transparent : {money(forecast[-1].value)} à 10 ans, basé sur le rendement pondéré saisi. À compléter ultérieurement par scénarios prudent/central/dynamique.")
+        forecast_text = (
+            f"Scénario central transparent : {money(forecast[-1].value)} à 10 ans, "
+            "basé sur le rendement pondéré saisi. À compléter ultérieurement par "
+            "scénarios prudent/central/dynamique."
+        )
+        self.forecast_label.setText(forecast_text)
+
+    @staticmethod
+    def _fill_account_combo(combo: QComboBox, accounts: list[dict[str, object]]) -> None:
+        for account in accounts:
+            combo.addItem(str(account["name"]), int(account["id"]))
 
     def _show_add_account(self) -> None:
         dialog = QWidget(self, Qt.WindowType.Dialog)
         dialog.setWindowTitle("Ajouter un compte")
         form = QFormLayout(dialog)
-        name = QLineEdit(); kind = QComboBox(); kind.addItems([k.value for k in AccountKind])
-        balance = QDoubleSpinBox(); balance.setRange(-100_000_000, 100_000_000); balance.setDecimals(2); balance.setSuffix(" €")
-        scope = QComboBox(); scope.addItems(["Personnel", "Foyer", "Dette personnelle", "Dette foyer"])
+
+        name = QLineEdit()
+        kind = QComboBox()
+        kind.addItems([account_kind.value for account_kind in AccountKind])
+        balance = QDoubleSpinBox()
+        balance.setRange(-100_000_000, 100_000_000)
+        balance.setDecimals(2)
+        balance.setSuffix(" €")
+        scope = QComboBox()
+        scope.addItems(
+            ["Personnel", "Foyer", "Dette personnelle", "Dette foyer"]
+        )
         institution = QLineEdit()
-        submit = QPushButton("Ajouter"); submit.setObjectName("Primary")
-        form.addRow("Nom", name); form.addRow("Type", kind); form.addRow("Solde", balance); form.addRow("Portée", scope); form.addRow("Établissement", institution); form.addRow(submit)
+        submit = QPushButton("Ajouter")
+        submit.setObjectName("Primary")
+
+        form.addRow("Nom", name)
+        form.addRow("Type", kind)
+        form.addRow("Solde", balance)
+        form.addRow("Portée", scope)
+        form.addRow("Établissement", institution)
+        form.addRow(submit)
+
         def save() -> None:
-            text = scope.currentText()
-            self._finance.add_account(self._user.id, name.text(), kind.currentText(), Decimal(str(balance.value())), shared="Foyer" in text, is_liability="Dette" in text, institution=institution.text())
-            dialog.close(); self.refresh()
+            scope_text = scope.currentText()
+            self._finance.add_account(
+                self._user.id,
+                name.text(),
+                kind.currentText(),
+                Decimal(str(balance.value())),
+                shared="Foyer" in scope_text,
+                is_liability="Dette" in scope_text,
+                institution=institution.text(),
+            )
+            dialog.close()
+            self.refresh()
+
         submit.clicked.connect(save)
-        dialog.resize(420, 260); dialog.show(); self._account_dialog = dialog
+        dialog.resize(420, 260)
+        dialog.show()
+        self._account_dialog = dialog
 
     def _show_add_asset(self) -> None:
         accounts = self._finance.list_accounts(self._user.id)
         if not accounts:
             QMessageBox.information(self, "Placement", "Ajoutez d'abord un compte.")
             return
-        dialog = QWidget(self, Qt.WindowType.Dialog); dialog.setWindowTitle("Ajouter un placement")
+
+        dialog = QWidget(self, Qt.WindowType.Dialog)
+        dialog.setWindowTitle("Ajouter un placement")
         form = QFormLayout(dialog)
-        account = QComboBox(); [account.addItem(str(a["name"]), int(a["id"])) for a in accounts]
-        label = QLineEdit(); kind = QComboBox(); kind.addItems([k.value for k in AssetKind])
-        value = QDoubleSpinBox(); value.setRange(0, 100_000_000); value.setDecimals(2); value.setSuffix(" €")
-        sector = QLineEdit(); geography = QLineEdit(); expected = QDoubleSpinBox(); expected.setRange(-100, 100); expected.setDecimals(2); expected.setValue(5.0); expected.setSuffix(" %")
-        submit = QPushButton("Ajouter"); submit.setObjectName("Primary")
-        for title, widget in [("Compte", account), ("Libellé", label), ("Classe", kind), ("Valeur", value), ("Secteur", sector), ("Géographie", geography), ("Rendement attendu", expected)]: form.addRow(title, widget)
+        account = QComboBox()
+        self._fill_account_combo(account, accounts)
+        label = QLineEdit()
+        kind = QComboBox()
+        kind.addItems([asset_kind.value for asset_kind in AssetKind])
+        value = QDoubleSpinBox()
+        value.setRange(0, 100_000_000)
+        value.setDecimals(2)
+        value.setSuffix(" €")
+        sector = QLineEdit()
+        geography = QLineEdit()
+        expected = QDoubleSpinBox()
+        expected.setRange(-100, 100)
+        expected.setDecimals(2)
+        expected.setValue(5.0)
+        expected.setSuffix(" %")
+        submit = QPushButton("Ajouter")
+        submit.setObjectName("Primary")
+
+        fields = [
+            ("Compte", account),
+            ("Libellé", label),
+            ("Classe", kind),
+            ("Valeur", value),
+            ("Secteur", sector),
+            ("Géographie", geography),
+            ("Rendement attendu", expected),
+        ]
+        for title, widget in fields:
+            form.addRow(title, widget)
         form.addRow(submit)
+
         def save() -> None:
-            self._finance.add_asset(int(account.currentData()), label.text(), kind.currentText(), Decimal(str(value.value())), sector.text(), geography.text(), Decimal(str(expected.value() / 100)))
-            dialog.close(); self.refresh()
-        submit.clicked.connect(save); dialog.resize(440, 360); dialog.show(); self._asset_dialog = dialog
+            self._finance.add_asset(
+                int(account.currentData()),
+                label.text(),
+                kind.currentText(),
+                Decimal(str(value.value())),
+                sector.text(),
+                geography.text(),
+                Decimal(str(expected.value() / 100)),
+            )
+            dialog.close()
+            self.refresh()
+
+        submit.clicked.connect(save)
+        dialog.resize(440, 360)
+        dialog.show()
+        self._asset_dialog = dialog
 
     def _show_add_transaction(self) -> None:
-        from datetime import date
         accounts = self._finance.list_accounts(self._user.id)
         if not accounts:
-            QMessageBox.information(self, "Transaction", "Ajoutez d'abord un compte.")
+            QMessageBox.information(
+                self, "Transaction", "Ajoutez d'abord un compte."
+            )
             return
-        dialog = QWidget(self, Qt.WindowType.Dialog); dialog.setWindowTitle("Ajouter une transaction")
+
+        dialog = QWidget(self, Qt.WindowType.Dialog)
+        dialog.setWindowTitle("Ajouter une transaction")
         form = QFormLayout(dialog)
-        account = QComboBox(); [account.addItem(str(a["name"]), int(a["id"])) for a in accounts]
-        category = QLineEdit(); category.setPlaceholderText("Logement, Courses, Salaire…")
+        account = QComboBox()
+        self._fill_account_combo(account, accounts)
+        category = QLineEdit()
+        category.setPlaceholderText("Logement, Courses, Salaire…")
         label = QLineEdit()
-        amount = QDoubleSpinBox(); amount.setRange(-100_000_000, 100_000_000); amount.setDecimals(2); amount.setSuffix(" €")
-        scope = QComboBox(); scope.addItems(["Personnel", "Foyer"])
-        submit = QPushButton("Enregistrer"); submit.setObjectName("Primary")
-        for title, widget in [("Compte", account), ("Catégorie", category), ("Libellé", label), ("Montant (+ entrée / - dépense)", amount), ("Portée", scope)]: form.addRow(title, widget)
+        amount = QDoubleSpinBox()
+        amount.setRange(-100_000_000, 100_000_000)
+        amount.setDecimals(2)
+        amount.setSuffix(" €")
+        scope = QComboBox()
+        scope.addItems(["Personnel", "Foyer"])
+        submit = QPushButton("Enregistrer")
+        submit.setObjectName("Primary")
+
+        fields = [
+            ("Compte", account),
+            ("Catégorie", category),
+            ("Libellé", label),
+            ("Montant (+ entrée / - dépense)", amount),
+            ("Portée", scope),
+        ]
+        for title, widget in fields:
+            form.addRow(title, widget)
         form.addRow(submit)
+
         def save() -> None:
-            self._finance.add_transaction(int(account.currentData()), date.today(), category.text(), label.text(), Decimal(str(amount.value())), is_shared=scope.currentText() == "Foyer")
-            dialog.close(); self.refresh()
-        submit.clicked.connect(save); dialog.resize(470, 300); dialog.show(); self._transaction_dialog = dialog
+            self._finance.add_transaction(
+                int(account.currentData()),
+                date.today(),
+                category.text(),
+                label.text(),
+                Decimal(str(amount.value())),
+                is_shared=scope.currentText() == "Foyer",
+            )
+            dialog.close()
+            self.refresh()
+
+        submit.clicked.connect(save)
+        dialog.resize(470, 300)
+        dialog.show()
+        self._transaction_dialog = dialog
 
     def _show_budget(self) -> None:
-        household_id, _, role, _ = self._finance.household_for_user(self._user.id)
+        _, _, role, _ = self._finance.household_for_user(self._user.id)
         if role != "admin_foyer":
-            QMessageBox.warning(self, "Budget", "Seul l'admin_foyer peut modifier le budget commun.")
+            QMessageBox.warning(
+                self,
+                "Budget",
+                "Seul l'admin_foyer peut modifier le budget commun.",
+            )
             return
-        dialog = QWidget(self, Qt.WindowType.Dialog); dialog.setWindowTitle("Budget commun mensuel")
+
+        dialog = QWidget(self, Qt.WindowType.Dialog)
+        dialog.setWindowTitle("Budget commun mensuel")
         form = QFormLayout(dialog)
-        category = QLineEdit(); category.setPlaceholderText("Courses, logement, énergie…")
-        amount = QDoubleSpinBox(); amount.setRange(0, 100_000_000); amount.setDecimals(2); amount.setSuffix(" €")
-        submit = QPushButton("Enregistrer"); submit.setObjectName("Primary")
-        form.addRow("Catégorie", category); form.addRow("Montant prévu", amount); form.addRow(submit)
+        category = QLineEdit()
+        category.setPlaceholderText("Courses, logement, énergie…")
+        amount = QDoubleSpinBox()
+        amount.setRange(0, 100_000_000)
+        amount.setDecimals(2)
+        amount.setSuffix(" €")
+        submit = QPushButton("Enregistrer")
+        submit.setObjectName("Primary")
+        form.addRow("Catégorie", category)
+        form.addRow("Montant prévu", amount)
+        form.addRow(submit)
+
         def save() -> None:
             try:
-                self._finance.set_budget(self._user.id, category.text().strip() or "Autre", Decimal(str(amount.value())))
+                self._finance.set_budget(
+                    self._user.id,
+                    category.text().strip() or "Autre",
+                    Decimal(str(amount.value())),
+                )
             except (PermissionError, ValueError) as exc:
-                QMessageBox.warning(dialog, "Budget", str(exc)); return
-            dialog.close(); self.refresh()
-        submit.clicked.connect(save); dialog.resize(430, 210); dialog.show(); self._budget_dialog = dialog
+                QMessageBox.warning(dialog, "Budget", str(exc))
+                return
+            dialog.close()
+            self.refresh()
+
+        submit.clicked.connect(save)
+        dialog.resize(430, 210)
+        dialog.show()
+        self._budget_dialog = dialog
 
     def _show_add_member(self) -> None:
         _, _, role, _ = self._finance.household_for_user(self._user.id)
         if role != "admin_foyer":
-            QMessageBox.warning(self, "Membre", "Seul l'admin_foyer peut créer un membre.")
+            QMessageBox.warning(
+                self, "Membre", "Seul l'admin_foyer peut créer un membre."
+            )
             return
-        dialog = QWidget(self, Qt.WindowType.Dialog); dialog.setWindowTitle("Créer un membre du foyer")
+
+        dialog = QWidget(self, Qt.WindowType.Dialog)
+        dialog.setWindowTitle("Créer un membre du foyer")
         form = QFormLayout(dialog)
-        username = QLineEdit(); display_name = QLineEdit(); password = QLineEdit(); password.setEchoMode(QLineEdit.EchoMode.Password)
-        visibility = QComboBox(); visibility.addItems(["Accès au foyer", "Profil personnel uniquement"])
-        submit = QPushButton("Créer le membre"); submit.setObjectName("Primary")
-        for title, widget in [("Utilisateur", username), ("Nom affiché", display_name), ("Mot de passe", password), ("Visibilité", visibility)]: form.addRow(title, widget)
+        username = QLineEdit()
+        display_name = QLineEdit()
+        password = QLineEdit()
+        password.setEchoMode(QLineEdit.EchoMode.Password)
+        visibility = QComboBox()
+        visibility.addItems(["Accès au foyer", "Profil personnel uniquement"])
+        submit = QPushButton("Créer le membre")
+        submit.setObjectName("Primary")
+
+        fields = [
+            ("Utilisateur", username),
+            ("Nom affiché", display_name),
+            ("Mot de passe", password),
+            ("Visibilité", visibility),
+        ]
+        for title, widget in fields:
+            form.addRow(title, widget)
         form.addRow(submit)
+
         def save() -> None:
             try:
-                self._auth.create_household_member(self._user.id, username.text(), password.text(), display_name.text(), can_view_household=visibility.currentIndex() == 0)
+                self._auth.create_household_member(
+                    self._user.id,
+                    username.text(),
+                    password.text(),
+                    display_name.text(),
+                    can_view_household=visibility.currentIndex() == 0,
+                )
             except (PermissionError, ValueError) as exc:
-                QMessageBox.warning(dialog, "Membre", str(exc)); return
-            QMessageBox.information(dialog, "Membre", "Le membre peut maintenant se connecter avec son propre profil.")
+                QMessageBox.warning(dialog, "Membre", str(exc))
+                return
+            QMessageBox.information(
+                dialog,
+                "Membre",
+                "Le membre peut maintenant se connecter avec son propre profil.",
+            )
             dialog.close()
-        submit.clicked.connect(save); dialog.resize(450, 280); dialog.show(); self._member_dialog = dialog
+
+        submit.clicked.connect(save)
+        dialog.resize(450, 280)
+        dialog.show()
+        self._member_dialog = dialog
