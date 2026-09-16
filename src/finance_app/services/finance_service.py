@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from finance_app.analytics.metrics import (
     AllocationItem,
@@ -19,21 +19,22 @@ from finance_app.models.entities import (
     FinancialAccount,
     HouseholdMember,
     MonthlyBudget,
+    NetWorthSnapshot,
     Transaction,
 )
 from finance_app.security.crypto import CryptoService
 
 
 class FinanceService:
+    """Application service for financial data and household permissions."""
+
     def __init__(self, database: Database, crypto: CryptoService) -> None:
         self._database = database
         self._crypto = crypto
 
     def household_for_user(self, user_id: int) -> tuple[int, str, str, bool]:
         with self._database.session() as session:
-            membership = session.scalar(
-                select(HouseholdMember).where(HouseholdMember.user_id == user_id)
-            )
+            membership = session.scalar(select(HouseholdMember).where(HouseholdMember.user_id == user_id))
             if not membership:
                 raise ValueError("Aucun foyer associé à cet utilisateur.")
             return (
@@ -53,46 +54,111 @@ class FinanceService:
         shared: bool,
         is_liability: bool = False,
         institution: str = "",
-    ) -> None:
+    ) -> int:
         household_id, _, _, _ = self.household_for_user(user_id)
+        if not name.strip():
+            raise ValueError("Le nom du compte est obligatoire.")
         with self._database.session() as session:
-            session.add(
-                FinancialAccount(
-                    owner_user_id=None if shared else user_id,
-                    household_id=household_id if shared else None,
-                    name_encrypted=self._crypto.encrypt(name.strip()),
-                    institution_encrypted=self._crypto.encrypt(institution.strip()),
-                    kind=kind,
-                    current_balance=balance,
-                    is_liability=is_liability,
-                )
+            account = FinancialAccount(
+                owner_user_id=None if shared else user_id,
+                household_id=household_id if shared else None,
+                name_encrypted=self._crypto.encrypt(name.strip()),
+                institution_encrypted=self._crypto.encrypt(institution.strip()),
+                kind=kind,
+                current_balance=balance,
+                is_liability=is_liability,
             )
+            session.add(account)
+            session.flush()
+            return account.id
+
+    def _visible_accounts(self, session, user_id: int) -> list[FinancialAccount]:
+        household_id, _, _, can_view = self.household_for_user(user_id)
+        personal = session.scalars(
+            select(FinancialAccount).where(FinancialAccount.owner_user_id == user_id)
+        ).all()
+        if not can_view:
+            return list(personal)
+        shared = session.scalars(
+            select(FinancialAccount).where(FinancialAccount.household_id == household_id)
+        ).all()
+        return list({account.id: account for account in [*personal, *shared]}.values())
 
     def list_accounts(self, user_id: int) -> list[dict[str, object]]:
-        household_id, _, _, can_view = self.household_for_user(user_id)
         with self._database.session() as session:
-            conditions = [FinancialAccount.owner_user_id == user_id]
-            if can_view:
-                conditions.append(FinancialAccount.household_id == household_id)
-            accounts = session.scalars(select(FinancialAccount).where(*([] if False else [conditions[0]]))).all()
-            # SQLite-friendly explicit merge avoids complex OR composition and keeps permissions obvious.
-            if can_view:
-                shared = session.scalars(
-                    select(FinancialAccount).where(FinancialAccount.household_id == household_id)
-                ).all()
-                by_id = {account.id: account for account in [*accounts, *shared]}
-                accounts = list(by_id.values())
-            return [
-                {
-                    "id": account.id,
-                    "name": self._crypto.decrypt(account.name_encrypted),
-                    "kind": account.kind,
-                    "balance": Decimal(account.current_balance),
-                    "liability": account.is_liability,
-                    "shared": account.household_id is not None,
-                }
-                for account in accounts
-            ]
+            accounts = self._visible_accounts(session, user_id)
+            return [self._account_dict(account) for account in accounts]
+
+    def _account_dict(self, account: FinancialAccount) -> dict[str, object]:
+        return {
+            "id": account.id,
+            "name": self._crypto.decrypt(account.name_encrypted),
+            "institution": self._crypto.decrypt(account.institution_encrypted),
+            "kind": account.kind,
+            "balance": Decimal(account.current_balance),
+            "liability": account.is_liability,
+            "shared": account.household_id is not None,
+            "created_at": account.created_at,
+        }
+
+    def _can_manage_account(self, session, user_id: int, account: FinancialAccount) -> bool:
+        household_id, _, role, _ = self.household_for_user(user_id)
+        if account.owner_user_id == user_id:
+            return True
+        return account.household_id == household_id and role == "admin_foyer"
+
+    def update_account(
+        self,
+        user_id: int,
+        account_id: int,
+        *,
+        name: str,
+        kind: str,
+        institution: str,
+        balance: Decimal,
+    ) -> None:
+        with self._database.session() as session:
+            account = session.get(FinancialAccount, account_id)
+            if account is None or not self._can_manage_account(session, user_id, account):
+                raise PermissionError("Vous n'avez pas les droits sur ce compte.")
+            if not name.strip():
+                raise ValueError("Le nom du compte est obligatoire.")
+            account.name_encrypted = self._crypto.encrypt(name.strip())
+            account.institution_encrypted = self._crypto.encrypt(institution.strip())
+            account.kind = kind
+            account.current_balance = balance
+
+    def delete_account(self, user_id: int, account_id: int) -> None:
+        with self._database.session() as session:
+            account = session.get(FinancialAccount, account_id)
+            if account is None or not self._can_manage_account(session, user_id, account):
+                raise PermissionError("Vous n'avez pas les droits sur ce compte.")
+            session.delete(account)
+
+    def account_history(self, user_id: int, account_id: int) -> list[dict[str, object]]:
+        with self._database.session() as session:
+            account = session.get(FinancialAccount, account_id)
+            if account is None or account not in self._visible_accounts(session, user_id):
+                raise PermissionError("Compte non accessible.")
+            transactions = session.scalars(
+                select(Transaction)
+                .where(Transaction.account_id == account_id)
+                .order_by(Transaction.booked_on.asc(), Transaction.id.asc())
+            ).all()
+            running = Decimal("0")
+            rows = []
+            for transaction in transactions:
+                running += Decimal(transaction.amount)
+                rows.append({
+                    "id": transaction.id,
+                    "date": transaction.booked_on,
+                    "category": transaction.category,
+                    "label": self._crypto.decrypt(transaction.label_encrypted),
+                    "amount": Decimal(transaction.amount),
+                    "running_balance": running,
+                    "shared": transaction.is_shared,
+                })
+            return rows
 
     def add_transaction(
         self,
@@ -109,16 +175,38 @@ class FinanceService:
             if account is None:
                 raise ValueError("Compte introuvable.")
             account.current_balance = Decimal(account.current_balance) + amount
-            session.add(
-                Transaction(
-                    account_id=account_id,
-                    booked_on=booked_on,
-                    category=category.strip() or "Autre",
-                    label_encrypted=self._crypto.encrypt(label.strip()),
-                    amount=amount,
-                    is_shared=is_shared,
-                )
-            )
+            session.add(Transaction(
+                account_id=account_id,
+                booked_on=booked_on,
+                category=category.strip() or "Autre",
+                label_encrypted=self._crypto.encrypt(label.strip()),
+                amount=amount,
+                is_shared=is_shared,
+            ))
+
+    def update_transaction(self, user_id: int, transaction_id: int, *, amount: Decimal, category: str, label: str) -> None:
+        with self._database.session() as session:
+            transaction = session.get(Transaction, transaction_id)
+            if transaction is None:
+                raise ValueError("Transaction introuvable.")
+            account = session.get(FinancialAccount, transaction.account_id)
+            if account is None or not self._can_manage_account(session, user_id, account):
+                raise PermissionError("Vous n'avez pas les droits sur cette transaction.")
+            account.current_balance = Decimal(account.current_balance) - Decimal(transaction.amount) + amount
+            transaction.amount = amount
+            transaction.category = category.strip() or "Autre"
+            transaction.label_encrypted = self._crypto.encrypt(label.strip())
+
+    def delete_transaction(self, user_id: int, transaction_id: int) -> None:
+        with self._database.session() as session:
+            transaction = session.get(Transaction, transaction_id)
+            if transaction is None:
+                return
+            account = session.get(FinancialAccount, transaction.account_id)
+            if account is None or not self._can_manage_account(session, user_id, account):
+                raise PermissionError("Vous n'avez pas les droits sur cette transaction.")
+            account.current_balance = Decimal(account.current_balance) - Decimal(transaction.amount)
+            session.delete(transaction)
 
     def add_asset(
         self,
@@ -131,70 +219,91 @@ class FinanceService:
         expected_return: Decimal,
     ) -> None:
         with self._database.session() as session:
-            session.add(
-                AssetPosition(
-                    account_id=account_id,
-                    label_encrypted=self._crypto.encrypt(label.strip()),
-                    asset_kind=asset_kind,
-                    value=value,
-                    sector=sector.strip() or "Non renseigné",
-                    geography=geography.strip() or "Non renseigné",
-                    expected_annual_return=expected_return,
-                )
-            )
+            if session.get(FinancialAccount, account_id) is None:
+                raise ValueError("Compte introuvable.")
+            session.add(AssetPosition(
+                account_id=account_id,
+                label_encrypted=self._crypto.encrypt(label.strip()),
+                asset_kind=asset_kind,
+                value=value,
+                sector=sector.strip() or "Non renseigné",
+                geography=geography.strip() or "Non renseigné",
+                expected_annual_return=expected_return,
+            ))
+
+    def record_snapshot(self, user_id: int) -> None:
+        household_id, _, _, can_view = self.household_for_user(user_id)
+        if not can_view:
+            return
+        data = self._calculate_totals(user_id)
+        with self._database.session() as session:
+            exists = session.scalar(select(NetWorthSnapshot).where(
+                NetWorthSnapshot.household_id == household_id,
+                NetWorthSnapshot.captured_on == date.today(),
+            ))
+            if not exists:
+                session.add(NetWorthSnapshot(
+                    household_id=household_id,
+                    captured_on=date.today(),
+                    gross_assets=data["gross"],
+                    liabilities=data["liabilities"],
+                    net_worth=data["net"],
+                ))
+
+    def net_worth_history(self, user_id: int) -> list[dict[str, object]]:
+        household_id, _, _, can_view = self.household_for_user(user_id)
+        if not can_view:
+            return []
+        with self._database.session() as session:
+            snapshots = session.scalars(select(NetWorthSnapshot).where(
+                NetWorthSnapshot.household_id == household_id
+            ).order_by(NetWorthSnapshot.captured_on.asc())).all()
+            return [{
+                "date": snapshot.captured_on,
+                "gross": Decimal(snapshot.gross_assets),
+                "liabilities": Decimal(snapshot.liabilities),
+                "net": Decimal(snapshot.net_worth),
+            } for snapshot in snapshots]
+
+    def _calculate_totals(self, user_id: int) -> dict[str, Decimal]:
+        accounts = self.list_accounts(user_id)
+        gross = sum((row["balance"] for row in accounts if not row["liability"]), Decimal("0"))
+        liabilities = sum((abs(row["balance"]) for row in accounts if row["liability"]), Decimal("0"))
+        return {"gross": gross, "liabilities": liabilities, "net": gross - liabilities}
 
     def dashboard(self, user_id: int) -> dict[str, object]:
         household_id, _, _, can_view = self.household_for_user(user_id)
         account_rows = self.list_accounts(user_id)
-        gross = sum((row["balance"] for row in account_rows if not row["liability"]), Decimal("0"))
-        liabilities = sum((abs(row["balance"]) for row in account_rows if row["liability"]), Decimal("0"))
-        net = gross - liabilities
-
+        totals = self._calculate_totals(user_id)
         account_ids = [int(row["id"]) for row in account_rows]
         with self._database.session() as session:
-            assets = []
-            transactions = []
-            if account_ids:
-                assets = session.scalars(
-                    select(AssetPosition).where(AssetPosition.account_id.in_(account_ids))
-                ).all()
-                transactions = session.scalars(
-                    select(Transaction)
-                    .where(Transaction.account_id.in_(account_ids))
-                    .order_by(Transaction.booked_on.desc())
-                ).all()
-
-            expense_categories: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+            assets = session.scalars(select(AssetPosition).where(
+                AssetPosition.account_id.in_(account_ids)
+            )).all() if account_ids else []
+            transactions = session.scalars(select(Transaction).where(
+                Transaction.account_id.in_(account_ids)
+            ).order_by(Transaction.booked_on.desc(), Transaction.id.desc())).all() if account_ids else []
+            expenses: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
             for tx in transactions:
-                amount = Decimal(tx.amount)
-                if amount < 0:
-                    expense_categories[tx.category] += abs(amount)
-
+                if Decimal(tx.amount) < 0:
+                    expenses[tx.category] += abs(Decimal(tx.amount))
             asset_values = [Decimal(a.value) for a in assets]
             by_type = allocation_by((a.asset_kind, Decimal(a.value)) for a in assets)
             by_sector = allocation_by((a.sector, Decimal(a.value)) for a in assets)
             by_geography = allocation_by((a.geography, Decimal(a.value)) for a in assets)
             expected = weighted_expected_return(
-                AllocationItem(a.asset_kind, Decimal(a.value), Decimal(a.expected_annual_return))
-                for a in assets
+                AllocationItem(a.asset_kind, Decimal(a.value), Decimal(a.expected_annual_return)) for a in assets
             )
-            forecast = project_compound(max(net, Decimal("0")), expected, years=10)
-
+            forecast = project_compound(max(totals["net"], Decimal("0")), expected, years=10)
             first_of_month = date.today().replace(day=1)
-            budgets = session.scalars(
-                select(MonthlyBudget).where(
-                    MonthlyBudget.household_id == household_id,
-                    MonthlyBudget.month == first_of_month,
-                )
-            ).all() if can_view else []
-
+            budgets = session.scalars(select(MonthlyBudget).where(
+                MonthlyBudget.household_id == household_id,
+                MonthlyBudget.month == first_of_month,
+            )).all() if can_view else []
         planned = sum((Decimal(b.planned_amount) for b in budgets), Decimal("0"))
-        spent = sum(expense_categories.values(), Decimal("0"))
         return {
-            "gross": gross,
-            "liabilities": liabilities,
-            "net": net,
-            "expenses": dict(sorted(expense_categories.items(), key=lambda x: x[1], reverse=True)),
+            **totals,
+            "expenses": dict(sorted(expenses.items(), key=lambda item: item[1], reverse=True)),
             "allocation_type": by_type,
             "allocation_sector": by_sector,
             "allocation_geography": by_geography,
@@ -202,8 +311,9 @@ class FinanceService:
             "expected_return": expected,
             "forecast": forecast,
             "budget_planned": planned,
-            "budget_spent": spent,
+            "budget_spent": sum(expenses.values(), Decimal("0")),
             "accounts": account_rows,
+            "transaction_count": len(transactions),
         }
 
     def set_budget(self, user_id: int, category: str, amount: Decimal) -> None:
@@ -212,21 +322,17 @@ class FinanceService:
             raise PermissionError("Seul l'admin_foyer peut modifier le budget du foyer.")
         month = date.today().replace(day=1)
         with self._database.session() as session:
-            item = session.scalar(
-                select(MonthlyBudget).where(
-                    MonthlyBudget.household_id == household_id,
-                    MonthlyBudget.month == month,
-                    MonthlyBudget.category == category,
-                )
-            )
+            item = session.scalar(select(MonthlyBudget).where(
+                MonthlyBudget.household_id == household_id,
+                MonthlyBudget.month == month,
+                MonthlyBudget.category == category,
+            ))
             if item:
                 item.planned_amount = amount
             else:
-                session.add(
-                    MonthlyBudget(
-                        household_id=household_id,
-                        month=month,
-                        category=category,
-                        planned_amount=amount,
-                    )
-                )
+                session.add(MonthlyBudget(
+                    household_id=household_id,
+                    month=month,
+                    category=category,
+                    planned_amount=amount,
+                ))
