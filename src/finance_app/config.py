@@ -4,7 +4,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-
 APP_NAME = "FinanceFoyer"
 APP_VERSION = "0.1.0"
 
