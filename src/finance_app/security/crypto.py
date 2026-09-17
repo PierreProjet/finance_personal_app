@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import os
+from contextlib import suppress
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -34,7 +35,11 @@ class CryptoService:
                 if stored:
                     return stored.encode("ascii")
                 generated = Fernet.generate_key()
-                keyring.set_password(SERVICE_NAME, KEY_ACCOUNT, generated.decode("ascii"))
+                keyring.set_password(
+                    SERVICE_NAME,
+                    KEY_ACCOUNT,
+                    generated.decode("ascii"),
+                )
                 return generated
             except Exception:
                 pass
@@ -44,10 +49,8 @@ class CryptoService:
             return key_path.read_bytes().strip()
         generated = Fernet.generate_key()
         key_path.write_bytes(generated)
-        try:
+        with suppress(OSError):
             os.chmod(key_path, 0o600)
-        except OSError:
-            pass
         return generated
 
     def encrypt(self, value: str) -> str:
