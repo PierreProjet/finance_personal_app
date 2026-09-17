@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "finance-foyer"
-version = "0.1.0"
+version = "0.2.0"
 description = "Application locale et sécurisée de gestion des finances personnelles et du foyer."
 readme = "README.md"
 requires-python = ">=3.12"

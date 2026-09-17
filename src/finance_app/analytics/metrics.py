@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
 from math import pow
-from typing import Iterable
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,7 +20,10 @@ class ForecastPoint:
     value: Decimal
 
 
-def net_worth(assets: Iterable[Decimal], liabilities: Iterable[Decimal]) -> tuple[Decimal, Decimal, Decimal]:
+def net_worth(
+    assets: Iterable[Decimal],
+    liabilities: Iterable[Decimal],
+) -> tuple[Decimal, Decimal, Decimal]:
     gross = sum(assets, Decimal("0"))
     debt = sum(liabilities, Decimal("0"))
     return gross, debt, gross - debt
