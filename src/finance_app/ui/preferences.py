@@ -6,11 +6,21 @@ from pathlib import Path
 DEFAULT_PREFERENCES = {
     "theme": "dark",
     "accent_color": "#6C63FF",
+    "sidebar_color": "#151822",
+    "surface_color": "#171B26",
+    "chart_color": "#6C63FF",
     "show_net_worth": True,
     "show_accounts": True,
     "show_budget": True,
     "show_analytics": True,
+    "show_recent_transactions": True,
     "compact_mode": False,
+    "overview_layout": "synthese",
+    "chart_type": "line",
+    "show_chart_axes": True,
+    "chart_value_mode": "absolute",
+    "heritage_horizon": 10,
+    "projection_model": "central",
 }
 
 

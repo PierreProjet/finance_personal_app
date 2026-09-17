@@ -61,6 +61,8 @@ class AuthService:
     ) -> User:
         """Create a user directly inside the admin's household."""
         username = username.strip().lower()
+        if not username or not display_name.strip():
+            raise ValueError("Utilisateur et nom affiché sont obligatoires.")
         with self._database.session() as session:
             admin_membership = session.scalar(
                 select(HouseholdMember).where(HouseholdMember.user_id == admin_user_id)
@@ -88,8 +90,26 @@ class AuthService:
             session.flush()
             return user
 
+    def rename_household(self, admin_user_id: int, name: str) -> None:
+        name = name.strip()
+        if not name:
+            raise ValueError("Le nom du foyer est obligatoire.")
+        with self._database.session() as session:
+            membership = session.scalar(
+                select(HouseholdMember).where(HouseholdMember.user_id == admin_user_id)
+            )
+            if membership is None or membership.role != HouseholdRole.ADMIN.value:
+                raise PermissionError("Seul l'admin_foyer peut renommer le foyer.")
+            household = session.get(Household, membership.household_id)
+            if household is None:
+                raise ValueError("Foyer introuvable.")
+            household.name = name
+
     def set_household_visibility(
-        self, admin_user_id: int, member_user_id: int, can_view_household: bool
+        self,
+        admin_user_id: int,
+        member_user_id: int,
+        can_view_household: bool,
     ) -> None:
         with self._database.session() as session:
             admin_membership = session.scalar(
@@ -129,7 +149,9 @@ class AuthService:
 
     def authenticate(self, username: str, password: str) -> User | None:
         with self._database.session() as session:
-            user = session.scalar(select(User).where(User.username == username.strip().lower()))
+            user = session.scalar(
+                select(User).where(User.username == username.strip().lower())
+            )
             if user and verify_password(user.password_hash, password):
                 return user
         return None

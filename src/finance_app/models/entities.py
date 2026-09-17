@@ -4,7 +4,16 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -33,6 +42,21 @@ class AssetKind(StrEnum):
     REAL_ESTATE = "immobilier"
     CRYPTO = "crypto"
     PRIVATE_EQUITY = "non_cote"
+    OTHER = "autre"
+
+
+class ProjectStatus(StrEnum):
+    PLANNED = "prévu"
+    ACTIVE = "actif"
+    PAUSED = "en_pause"
+    COMPLETED = "terminé"
+
+
+class ContributionKind(StrEnum):
+    CASH = "cash"
+    MONTHLY = "mensualité"
+    LOAN = "prêt"
+    TRANSFER = "virement"
     OTHER = "autre"
 
 
@@ -82,6 +106,15 @@ class FinancialAccount(Base):
     kind: Mapped[str] = mapped_column(String(40))
     institution_encrypted: Mapped[str] = mapped_column(String(500), default="")
     notes_encrypted: Mapped[str] = mapped_column(String(2000), default="")
+    details_encrypted: Mapped[str] = mapped_column(String(4000), default="")
+    opened_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    annual_fee_percent: Mapped[Decimal] = mapped_column(
+        Numeric(8, 4), default=Decimal("0")
+    )
+    annual_fee_fixed: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), default=Decimal("0")
+    )
+    availability_days: Mapped[int] = mapped_column(Integer, default=0)
     current_balance: Mapped[Decimal] = mapped_column(
         Numeric(18, 2), default=Decimal("0")
     )
@@ -98,6 +131,8 @@ class AccountSnapshot(Base):
     )
     captured_on: Mapped[date] = mapped_column(Date, default=date.today)
     balance: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    source: Mapped[str] = mapped_column(String(30), default="system")
+    note_encrypted: Mapped[str] = mapped_column(String(1000), default="")
 
 
 class AssetPosition(Base):
@@ -140,6 +175,45 @@ class MonthlyBudget(Base):
     month: Mapped[date] = mapped_column(Date)
     category: Mapped[str] = mapped_column(String(100))
     planned_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+
+
+class HouseholdProject(Base):
+    __tablename__ = "household_projects"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    household_id: Mapped[int] = mapped_column(
+        ForeignKey("households.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(140))
+    kind: Mapped[str] = mapped_column(String(80), default="projet")
+    target_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), default=Decimal("0")
+    )
+    status: Mapped[str] = mapped_column(String(30), default=ProjectStatus.PLANNED.value)
+    notes_encrypted: Mapped[str] = mapped_column(String(2000), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class HouseholdProjectContribution(Base):
+    __tablename__ = "household_project_contributions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("household_projects.id", ondelete="CASCADE")
+    )
+    member_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
+    )
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_accounts.id", ondelete="SET NULL"), nullable=True
+    )
+    contribution_kind: Mapped[str] = mapped_column(
+        String(40), default=ContributionKind.CASH.value
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
+    monthly_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), default=Decimal("0")
+    )
+    duration_months: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(30), default="prévu")
 
 
 class NetWorthSnapshot(Base):
