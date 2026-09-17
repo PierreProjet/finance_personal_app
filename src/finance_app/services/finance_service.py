@@ -29,7 +29,6 @@ from finance_app.models.entities import (
 )
 from finance_app.security.crypto import CryptoService
 
-
 PROJECTION_MODELS: dict[str, Decimal] = {
     "prudent": Decimal("0.025"),
     "central": Decimal("0.045"),
