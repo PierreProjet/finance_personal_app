@@ -38,12 +38,20 @@ class Database:
     def _upgrade_legacy_schema(self) -> None:
         """Apply small idempotent upgrades required by the early MVP versions."""
         inspector = inspect(self.engine)
-        columns = {column["name"] for column in inspector.get_columns("financial_accounts")}
+        columns = {
+            column["name"] for column in inspector.get_columns("financial_accounts")
+        }
         upgrades = []
         if "notes_encrypted" not in columns:
-            upgrades.append("ALTER TABLE financial_accounts ADD COLUMN notes_encrypted VARCHAR(2000) DEFAULT ''")
+            upgrades.append(
+                "ALTER TABLE financial_accounts "
+                "ADD COLUMN notes_encrypted VARCHAR(2000) DEFAULT ''"
+            )
         if "is_archived" not in columns:
-            upgrades.append("ALTER TABLE financial_accounts ADD COLUMN is_archived BOOLEAN DEFAULT 0")
+            upgrades.append(
+                "ALTER TABLE financial_accounts "
+                "ADD COLUMN is_archived BOOLEAN DEFAULT 0"
+            )
         if upgrades:
             with self.engine.begin() as connection:
                 for statement in upgrades:
